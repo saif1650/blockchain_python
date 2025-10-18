@@ -1,4 +1,3 @@
-# fuzzy-disco
 # My Tech Journey 🚀
 
 Welcome to my learning and development space!  
