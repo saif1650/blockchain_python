@@ -1,0 +1,137 @@
+import time
+import json
+import hashlib
+from typing import List, Dict, Any
+
+def sha256_hex(s: str) -> str:
+    return hashlib.sha256(s.encode()).hexdigest()
+class Block:
+     """
+    A block stores:
+      - index: position in the chain
+      - timestamp: creation time
+      - transactions: list[dict] e.g. {"from": "Ali", "to": "Sara", "amount": 10}
+      - previous_hash: hash of previous block
+      - miner: who mined this block
+      - nonce: number varied to satisfy Proof-of-Work
+      - hash: block's own hash (after PoW)
+    """
+     def __init__(self, index:int,transactions: List[Dict[str,any]],previous_hash:str,miner:str):
+          self.index = index
+          self.timestamp = time.time()
+          self.transactions = transactions
+          self.previous_hash = previous_hash
+          self.miner = miner
+          self.nonce = 0
+          self.hash = self.calculate_hash()
+
+     def calculate_hash(self)->str:
+          payload = {
+               "index" : self.index,
+               "TimeStamp" : self.timestamp,
+               "transactions" : self.transactions,
+               "previous_hash" : self.previous_hash,
+               "miner" : self.miner,
+               "nonce" : self.nonce,
+          }
+          content = json.dumps(payload, sort_keys= True, separators=(",",":"))
+          return hashlib.sha256(content.encode()).hexdigest()
+     def mine(self, difficulty: int) ->None:
+          target_prefix = "0" * difficulty
+          while not self.hash.startswith(target_prefix):
+               self.nonce +=1
+               self.hash = self.calculate_hash()
+     def summary(self) -> str:
+          t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.timestamp))
+          return(
+               f"Block #{self.index} | {t} \n"
+               f" Miner: {self.miner} \n"
+               f" Tx count: {len(self.transactions)} \n"
+               f" prev: {self.previous_hash[:10]}... \n"
+               f" hash: {self.hash[:16]}...(nonce={self.nonce}) \n"
+          )
+
+class Blockchain:
+     def __init__(self, difficulty : int=3, mining_reward: int =50):
+          self.difficulty = difficulty
+          self.mining_reward = mining_reward
+          self.chain : List[Block] = [self._create_genesis_block()]
+          self.pending_transactions : List[Dict[str, any]] = []
+
+     def _create_genesis_block(self) ->Block :
+          return Block(
+               index = 0,
+               transactions = [{"from" : "network" , "to" : "network" , "amount" : 0, "note" : "genesis"}],
+               previous_hash = "0",
+               miner = "genesis",
+          )
+     
+     def latest_block(self) -> Block:
+          return self.chain[-1]
+     
+     def add_transaction(self, sender:str , receiver:str, amount:int|float, note:str= "" ) ->None:
+          if amount <= 0:
+               raise ValueError("Amount must be Positive")
+          if not sender or not receiver:
+               raise ValueError("Sender or Receiver Required")
+          self.pending_transactions.append(
+               {"from":sender,"to":receiver,"amount":amount,"note":note}
+          )
+
+     def mine_pending_transactions(self, miner_address : str) ->Block:
+           """Bundle, reward miner, run PoW, append block."""
+           reward_tx = {"from" : "network", "to" : miner_address, "amount":self.mining_reward, "note":"reward"}
+           transactions = self.pending_transactions + [reward_tx]
+           new_block = Block(
+                index=self.latest_block().index+1,
+                transactions=transactions,
+                previous_hash=self.latest_block().hash,
+                miner=miner_address
+           )
+
+           print(f" Mining Block #{new_block.index}...")
+           new_block.mine(self.difficulty)
+           self.chain.append(new_block)
+           self.pending_transactions =[]
+           return new_block
+     def is_chain_valid(self) ->bool :
+           """Validate linkage, hashes, and Proof-of-Work."""
+           target = "0" * self.difficulty
+           for i in range (1, len(self.chain)):
+                curr , prev = self.chain[i] , self.chain[i-1]
+                if curr.hash != curr.calculate_hash():
+                     print(f" Block {curr.index} : bad hash .")
+                     return False
+                if curr.previous_hash != prev.hash:
+                     print(f"Block {curr.index} : broken link.")
+                     return False
+                if not curr.hash.startswith(target):
+                     print(f"Block {curr.index} : invalid Pow.")
+                     return False
+                return True
+           
+     def print_chain(self) -> None:
+          for b in self.chain:
+               print(b.summary())
+
+
+
+if __name__ == "__main__":
+    bc = Blockchain(difficulty=3, mining_reward=25)
+
+    bc.add_transaction("Ali", "Sara", 10, "Coffee")
+    bc.add_transaction("Sara", "Omar", 5, "Snacks")
+    bc.add_transaction("Omar", "Zain", 2.5, "Tip")
+
+    mined1 = bc.mine_pending_transactions("Saif")
+    print(mined1.summary())
+
+    bc.add_transaction("Ali", "Saif", 7, "Thanks")
+    mined2 = bc.mine_pending_transactions("Ali")
+    print(mined2.summary())
+
+    print("🔗 Full chain:")
+    bc.print_chain()
+    print("✅ Chain valid?", bc.is_chain_valid())
+
+     
